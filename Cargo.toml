@@ -1,0 +1,12 @@
+[package]
+name = "tokio-file-unix"
+version = "0.1.0"
+authors = ["Phil Ruffwind <rf@rufflewind.com>"]
+
+[dependencies]
+libc = "^0.2.20"
+mio = "^0.6.4"
+tokio-core = "^0.1.4"
+
+[dev-dependencies]
+futures = "^0.1.10"
