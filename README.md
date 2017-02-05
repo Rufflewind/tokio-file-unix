@@ -8,7 +8,7 @@ Add this to your `Cargo.toml`:
 
 ~~~toml
 [dependencies]
-tokio-file-unix = "0.1.9"
+tokio-file-unix = "0.1.0"
 ~~~
 
 Next, add this to the root module of your crate:
