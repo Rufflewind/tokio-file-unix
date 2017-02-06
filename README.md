@@ -2,7 +2,7 @@
 
 **Quick links:** [Documentation](https://docs.rs/tokio-file-unix)
 
-Asynchronous support for `std::fs::File` via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms.**
+Asynchronous support for file-like objects via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms.**
 
 ## Usage
 
@@ -19,9 +19,9 @@ Next, add this to the root module of your crate:
 extern crate tokio_file_unix;
 ~~~
 
-## Example
+## Examples
 
-See the `examples` directory.
+See the `examples` directory as well as the documentation.
 
 ## License
 
