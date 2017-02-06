@@ -1,5 +1,7 @@
 # tokio-file-unix
 
+**Quick links:** [Documentation](https://docs.rs/tokio-file-unix)
+
 Asynchronous support for `std::fs::File` via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms.**
 
 ## Usage
