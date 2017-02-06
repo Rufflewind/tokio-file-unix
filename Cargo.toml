@@ -1,6 +1,6 @@
 [package]
 name = "tokio-file-unix"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Phil Ruffwind <rf@rufflewind.com>"]
 description = "Asynchronous support for std::fs::File via Tokio (Unix-like platforms only)."
 documentation = "https://docs.rs/tokio-file-unix"

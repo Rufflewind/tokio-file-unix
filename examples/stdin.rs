@@ -8,7 +8,8 @@ fn main() {
 
     // convert stdin into a nonblocking file;
     // this is the only part that makes use of tokio_file_unix
-    let file = std::fs::File::open("/dev/stdin").unwrap();
+    let stdin = std::io::stdin();
+    let file = tokio_file_unix::StdFile(stdin.lock());
     let file = tokio_file_unix::File::new_nb(file).unwrap();
     let file = file.into_reader(&handle).unwrap();
 
