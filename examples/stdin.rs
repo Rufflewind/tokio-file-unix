@@ -1,4 +1,5 @@
 extern crate futures;
+extern crate tokio_io;
 extern crate tokio_core;
 extern crate tokio_file_unix;
 
@@ -17,7 +18,7 @@ fn main() {
     use futures::{Future, future};
     core.run(future::loop_fn((file, Vec::new()), |(file, line)| {
         // read each line
-        tokio_core::io::read_until(file, b'\n', line).map(|(file, mut line)| {
+        tokio_io::io::read_until(file, b'\n', line).map(|(file, mut line)| {
 
             // demonstrate that the event loop isn't blocked by I/O!
             let one_sec = std::time::Duration::new(1, 0);

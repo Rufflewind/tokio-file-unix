@@ -5,12 +5,16 @@
 //! suitable for asynchronous I/O.  See [`DelimCodec`](struct.DelimCodec.html)
 //! for a more comprehensive example of reading the lines of a file using
 //! `futures::Stream`.
+extern crate bytes;
 extern crate libc;
 extern crate mio;
+extern crate tokio_io;
 extern crate tokio_core;
 
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
+use bytes::{BufMut, BytesMut};
+use tokio_io::codec;
 use tokio_core::reactor::{Handle, PollEvented};
 
 /// Wrapper for `std::io::Std*Lock` that can be used with `File`.
@@ -18,7 +22,7 @@ use tokio_core::reactor::{Handle, PollEvented};
 /// Note that the `Write` implementation for `StdinLock` always fails.
 /// Similarly, the `Read` implementations for `StdoutLock` and `StderrLock`
 /// always fail.  The extraneous implementations are needed to support
-/// `tokio_core::io::Io::framed`.
+/// `tokio_io::AsyncRead::framed`.
 ///
 /// For an example, see [`File`](struct.File.html).
 ///
@@ -175,8 +179,8 @@ impl<F: AsRawFd> File<F> {
     }
 
     /// Converts into a pollable object that supports `std::io::Read`,
-    /// `std::io::Write`, and `tokio_core::io::Io`, making it suitable for
-    /// `tokio_core::io::*`.
+    /// `std::io::Write`, `tokio_io::AsyncRead`, and `tokio_io::AsyncWrite`,
+    /// making it suitable for `tokio_io::io::*`.
     ///
     /// ```
     /// # /*
@@ -194,7 +198,7 @@ impl<F: AsRawFd> File<F> {
 
 impl<F: AsRawFd + io::Read> File<F> {
     /// Converts into a pollable object that supports `std::io::Read` and
-    /// `std::io::ReadBuf`, making it suitable for `tokio_core::io::read_*`.
+    /// `std::io::ReadBuf`, making it suitable for `tokio_io::io::read_*`.
     ///
     /// ```
     /// # /*
@@ -268,11 +272,12 @@ impl<F: io::Write> io::Write for File<F> {
 ///
 /// ```
 /// extern crate futures;
+/// extern crate tokio_io;
 /// extern crate tokio_core;
 /// # extern crate tokio_file_unix;
 ///
 /// use futures::Stream;
-/// use tokio_core::io::Io;
+/// use tokio_io::{AsyncRead, AsyncWrite};
 /// # use tokio_file_unix::*;
 /// #
 /// # fn main() {
@@ -309,24 +314,32 @@ impl<F: io::Write> io::Write for File<F> {
 #[derive(Debug, Clone, Copy)]
 pub struct DelimCodec<D>(pub D);
 
-impl<D: Into<u8> + Copy> tokio_core::io::Codec for DelimCodec<D> {
-    type In = Vec<u8>;
-    type Out = Vec<u8>;
+impl<D: Into<u8> + Copy> codec::Decoder for DelimCodec<D> {
+    type Item = Vec<u8>;
+    type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut tokio_core::io::EasyBuf)
-              -> io::Result<Option<Self::In>> {
+    fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<Self::Item>> {
         Ok(buf.as_ref().iter().position(|b| *b == self.0.into())
-           .map(|n| buf.drain_to(n + 1).as_ref().to_vec()))
+           .map(|n| buf.split_to(n + 1).as_ref().to_vec()))
     }
 
-    fn decode_eof(&mut self, buf: &mut tokio_core::io::EasyBuf)
-                  -> io::Result<Self::In> {
-        Ok(buf.split_off(0).as_ref().to_vec())
+    fn decode_eof(&mut self, buf: &mut BytesMut) -> io::Result<Option<Self::Item>> {
+        let buf = buf.split_off(0);
+        if buf.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(buf.as_ref().to_vec()))
+        }
     }
+}
 
-    fn encode(&mut self, msg: Self::Out, buf: &mut Vec<u8>) -> io::Result<()> {
+impl<D: Into<u8> + Copy> codec::Encoder for DelimCodec<D> {
+    type Item = Vec<u8>;
+    type Error = io::Error;
+
+    fn encode(&mut self, msg: Self::Item, buf: &mut BytesMut) -> io::Result<()> {
         buf.extend(msg);
-        buf.push(self.0.into());
+        buf.put_u8(self.0.into());
         Ok(())
     }
 }
