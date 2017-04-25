@@ -19,11 +19,6 @@ use tokio_core::reactor::{Handle, PollEvented};
 
 /// Wrapper for `std::io::Std*Lock` that can be used with `File`.
 ///
-/// Note that the `Write` implementation for `StdinLock` always fails.
-/// Similarly, the `Read` implementations for `StdoutLock` and `StderrLock`
-/// always fail.  The extraneous implementations are needed to support
-/// `tokio_io::AsyncRead::framed`.
-///
 /// For an example, see [`File`](struct.File.html).
 ///
 /// ```
@@ -59,25 +54,6 @@ impl<'a> io::Read for StdFile<io::StdinLock<'a>> {
     }
 }
 
-impl<'a> io::Write for StdFile<io::StdinLock<'a>> {
-    fn write(&mut self, _: &[u8]) -> io::Result<usize> {
-        Err(io::Error::new(io::ErrorKind::InvalidInput,
-                           "cannot write to stdin"))
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Err(io::Error::new(io::ErrorKind::InvalidInput,
-                           "cannot flush stdin"))
-    }
-}
-
-impl<'a> io::Read for StdFile<io::StdoutLock<'a>> {
-    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-        Err(io::Error::new(io::ErrorKind::InvalidInput,
-                           "cannot read from stdout"))
-    }
-}
-
 impl<'a> io::Write for StdFile<io::StdoutLock<'a>> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.write(buf)
@@ -85,13 +61,6 @@ impl<'a> io::Write for StdFile<io::StdoutLock<'a>> {
 
     fn flush(&mut self) -> io::Result<()> {
         self.0.flush()
-    }
-}
-
-impl<'a> io::Read for StdFile<io::StderrLock<'a>> {
-    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-        Err(io::Error::new(io::ErrorKind::InvalidInput,
-                           "cannot read from stderr"))
     }
 }
 
@@ -278,6 +247,7 @@ impl<F: io::Write> io::Write for File<F> {
 ///
 /// use futures::Stream;
 /// use tokio_io::{AsyncRead, AsyncWrite};
+/// use tokio_io::codec::FramedRead;
 /// # use tokio_file_unix::*;
 /// #
 /// # fn main() {
@@ -292,7 +262,7 @@ impl<F: io::Write> io::Write for File<F> {
 /// let io = File::new_nb(StdFile(stdin.lock()))?.into_io(&handle)?;
 ///
 /// // turn it into a stream of lines, decoded as UTF-8
-/// let line_stream = io.framed(DelimCodec(Newline)).and_then(|line| {
+/// let line_stream = FramedRead::new(io, DelimCodec(Newline)).and_then(|line| {
 ///     String::from_utf8(line).map_err(|_| {
 ///         std::io::Error::from(std::io::ErrorKind::InvalidData)
 ///     })
