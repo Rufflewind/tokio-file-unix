@@ -1,0 +1,4 @@
+Type something and hit enter!
+Got: Ok("The quick brown fox\n")
+Got: Ok("jumps over the lazy\n")
+Got: Ok("dog.")

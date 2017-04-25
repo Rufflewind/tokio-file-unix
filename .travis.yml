@@ -1,0 +1,11 @@
+language: rust
+sudo: false
+rust:
+- stable
+- beta
+- nightly
+script:
+- cargo build --verbose
+- cargo test --verbose
+- cat tests/test_input.txt | cargo run --example stdin | diff -u tests/test_output.txt -
+- cat tests/test_input.txt | cargo run --example stdin_stream | diff -u tests/test_output.txt -
