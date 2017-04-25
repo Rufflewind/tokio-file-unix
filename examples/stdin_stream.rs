@@ -1,8 +1,9 @@
 extern crate futures;
-extern crate tokio_io;
 extern crate tokio_core;
+extern crate tokio_io;
 extern crate tokio_file_unix;
 
+use std::io::Write;
 use futures::Stream;
 
 fn main() {
@@ -14,7 +15,14 @@ fn main() {
     let stdin = std::io::stdin();
     let file = tokio_file_unix::StdFile(stdin.lock());
     let file = tokio_file_unix::File::new_nb(file).unwrap();
-    let file = file.into_io(&handle).unwrap();
+    let file = match file.into_reader(&handle) {
+        Err(ref e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            writeln!(std::io::stderr(),
+                     "Error: Regular files are not supported.").unwrap();
+            std::process::exit(1);
+        }
+        x => x,
+    }.unwrap();
 
     println!("Type something and hit enter!");
     let line_codec = tokio_file_unix::DelimCodec(tokio_file_unix::Newline);

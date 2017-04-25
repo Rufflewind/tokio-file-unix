@@ -1,8 +1,10 @@
-# tokio-file-unix
+# `tokio-file-unix`
 
-**Quick links:** [Documentation](https://docs.rs/tokio-file-unix)
+[![Documentation](https://docs.rs/tokio-file-unix/badge.svg)](https://docs.rs/tokio-file-unix)
+[![Crates.io](https://img.shields.io/crates/v/tokio-file-unix.svg)](https://crates.io/crates/tokio-file-unix)
+[![Travis CI Build Status](https://travis-ci.org/Rufflewind/tokio-file-unix.svg?branch=master)](https://travis-ci.org/Rufflewind/tokio-file-unix)
 
-Asynchronous support for file-like objects via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms.**
+Asynchronous support for file-like objects via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms and non-regular files such as standard I/O, pipes, or sockets.**
 
 ## Usage
 
@@ -10,7 +12,7 @@ Add this to your `Cargo.toml`:
 
 ~~~toml
 [dependencies]
-tokio-file-unix = "0.2.0"
+tokio-file-unix = "0.3.0"
 ~~~
 
 Next, add this to the root module of your crate:

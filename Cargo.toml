@@ -1,19 +1,22 @@
 [package]
 name = "tokio-file-unix"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Phil Ruffwind <rf@rufflewind.com>"]
-description = "Asynchronous support for std::fs::File via Tokio (Unix-like platforms only)."
+description = "Asynchronous support for epollable files via Tokio on Unix-like platforms"
 documentation = "https://docs.rs/tokio-file-unix"
 repository = "https://github.com/Rufflewind/tokio-file-unix"
+readme = "README.md"
+keywords = ["asynchronous", "file", "pipe", "stdio", "tokio"]
+categories = ["asynchronous"]
 license = "MIT/Apache-2.0"
-exclude = [".gitignore"]
+exclude = [".gitignore", "tests/*.txt"]
 
 [dependencies]
-libc = "^0.2.21"
-mio = "^0.6.6"
-bytes = "^0.4.2"
-tokio-core = "^0.1.6"
-tokio-io = "^0.1.1"
+bytes = "0.4.2"
+libc = "0.2.21"
+mio = "0.6.6"
+tokio-core = "0.1.6"
+tokio-io = "0.1.1"
 
 [dev-dependencies]
-futures = "^0.1.10"
+futures = "0.1.10"

@@ -5,28 +5,33 @@
 //! suitable for asynchronous I/O.  See [`DelimCodec`](struct.DelimCodec.html)
 //! for a more comprehensive example of reading the lines of a file using
 //! `futures::Stream`.
+//!
+//! Due to limitations of `epoll`, the library [does not support regular
+//! files][bug2].  Only pipes/FIFO and sockets are supported.  Standard I/O is
+//! okay as long as they are not redirected to regular files.  Any attempt to
+//! use a regular file will cause a permissions error (`EPERM`) when the
+//! `PollEvented` object gets constructed.
+//!
+//! [bug2]: https://github.com/Rufflewind/tokio-file-unix/issues/2
 extern crate bytes;
 extern crate libc;
 extern crate mio;
-extern crate tokio_io;
 extern crate tokio_core;
+extern crate tokio_io;
 
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use bytes::{BufMut, BytesMut};
-use tokio_io::codec;
 use tokio_core::reactor::{Handle, PollEvented};
 
 /// Wrapper for `std::io::Std*Lock` that can be used with `File`.
 ///
 /// For an example, see [`File`](struct.File.html).
 ///
-/// ```
-/// # /*
+/// ```ignore
 /// impl AsRawFd + Read + Write for File<StdinLock>
 /// impl AsRawFd + Read + Write for File<StdoutLock>
 /// impl AsRawFd + Read + Write for File<StderrLock>
-/// # */
 /// ```
 pub struct StdFile<F>(pub F);
 
@@ -82,12 +87,10 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// nonblocking mode.  Using a file that is not in nonblocking mode for
 /// asynchronous I/O will lead to subtle bugs.
 ///
-/// ```
-/// # /*
-/// impl Evented for File<std::fs::File>
-/// impl Evented for File<StdFile<StdinLock>>
-/// impl Evented for File<impl AsRawFd>
-/// # */
+/// ```ignore
+/// impl Evented for File<std::fs::File>;
+/// impl Evented for File<StdFile<StdinLock>>;
+/// impl Evented for File<impl AsRawFd>;
 /// ```
 ///
 /// ## Example: wrapping standard input
@@ -108,12 +111,10 @@ impl<F: AsRawFd> File<F> {
     /// `tokio_core::reactor::PollEvented`, and also *enables nonblocking
     /// mode* on the underlying file descriptor.
     ///
-    /// ```
-    /// # /*
-    /// fn(File<std::fs::File>, &Handle) -> Result<impl Evented + Read + Write>
-    /// fn(File<StdFile<StdinLock>>, &Handle) -> Result<impl Evented + Read + Write>
-    /// fn(File<impl AsRawFd>, &Handle) -> Result<impl Evented>
-    /// # */
+    /// ```ignore
+    /// fn new_nb(std::fs::File) -> Result<impl Evented + Read + Write>;
+    /// fn new_nb(StdFile<StdinLock>) -> Result<impl Evented + Read + Write>;
+    /// fn new_nb(impl AsRawFd) -> Result<impl Evented>;
     /// ```
     pub fn new_nb(file: F) -> io::Result<Self> {
         let mut file = File(file);
@@ -147,18 +148,18 @@ impl<F: AsRawFd> File<F> {
         }
     }
 
-    /// Converts into a pollable object that supports `std::io::Read`,
-    /// `std::io::Write`, `tokio_io::AsyncRead`, and `tokio_io::AsyncWrite`,
-    /// making it suitable for `tokio_io::io::*`.
+    /// Converts into a pollable object that supports `std::io::AsyncRead` and
+    /// `std::io::AsyncWrite`, making it suitable for `tokio_io::io::*`.
     ///
-    /// ```
-    /// # /*
-    /// fn(File<std::fs::File>, &Handle) -> Result<impl Io>
-    /// fn(File<StdFile<StdinLock>>, &Handle) -> Result<impl Io>
-    /// fn(File<impl AsRawFd + Read>, &Handle) -> Result<impl Read>
-    /// fn(File<impl AsRawFd + Write>, &Handle) -> Result<impl Write>
-    /// fn(File<impl AsRawFd + Read + Write>, &Handle) -> Result<impl Io>
-    /// # */
+    /// If the underlying file descriptor refers to a regular file, this may
+    /// fail with “Operation not permitted” (`EPERM`).
+    ///
+    /// ```ignore
+    /// fn into_io(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
+    /// fn into_io(File<StdFile<StdinLock>>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
+    /// fn into_io(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead>;
+    /// fn into_io(File<impl AsRawFd + Write>, &Handle) -> Result<impl AsyncWrite>;
+    /// fn into_io(File<impl AsRawFd + Read + Write>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
     /// ```
     pub fn into_io(self, handle: &Handle) -> io::Result<PollEvented<Self>> {
         Ok(PollEvented::new(self, handle)?)
@@ -169,12 +170,13 @@ impl<F: AsRawFd + io::Read> File<F> {
     /// Converts into a pollable object that supports `std::io::Read` and
     /// `std::io::ReadBuf`, making it suitable for `tokio_io::io::read_*`.
     ///
-    /// ```
-    /// # /*
-    /// fn(File<std::fs::File>, &Handle) -> Result<impl ReadBuf>
-    /// fn(File<StdFile<StdinLock>>, &Handle) -> Result<impl ReadBuf>
-    /// fn(File<impl AsRawFd + Read>, &Handle) -> Result<impl ReadBuf>
-    /// # */
+    /// If the underlying file descriptor refers to a regular file, this may
+    /// fail with “Operation not permitted” (`EPERM`).
+    ///
+    /// ```ignore
+    /// fn into_reader(File<std::fs::File>, &Handle) -> Result<impl ReadBuf>;
+    /// fn into_reader(File<StdFile<StdinLock>>, &Handle) -> Result<impl ReadBuf>;
+    /// fn into_reader(File<impl AsRawFd + Read>, &Handle) -> Result<impl ReadBuf>;
     /// ```
     pub fn into_reader(self, handle: &Handle)
                        -> io::Result<io::BufReader<PollEvented<Self>>> {
@@ -229,20 +231,18 @@ impl<F: io::Write> io::Write for File<F> {
 /// byte.  All frames except possibly the last one contain the delimiter byte
 /// as the last element.
 ///
-/// ```
-/// # /*
-/// impl Codec for DelimCodec<u8>
-/// impl Codec for DelimCodec<Newline>
-/// impl Codec for DelimCodec<impl Into<u8> + Copy>
-/// # */
+/// ```ignore
+/// impl Codec for DelimCodec<u8>;
+/// impl Codec for DelimCodec<Newline>;
+/// impl Codec for DelimCodec<impl Into<u8> + Clone>;
 /// ```
 ///
 /// ## Example: read stdin line by line
 ///
 /// ```
 /// extern crate futures;
-/// extern crate tokio_io;
 /// extern crate tokio_core;
+/// extern crate tokio_io;
 /// # extern crate tokio_file_unix;
 ///
 /// use futures::Stream;
@@ -284,16 +284,18 @@ impl<F: io::Write> io::Write for File<F> {
 #[derive(Debug, Clone, Copy)]
 pub struct DelimCodec<D>(pub D);
 
-impl<D: Into<u8> + Copy> codec::Decoder for DelimCodec<D> {
+impl<D: Into<u8> + Clone> tokio_io::codec::Decoder for DelimCodec<D> {
     type Item = Vec<u8>;
     type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<Self::Item>> {
-        Ok(buf.as_ref().iter().position(|b| *b == self.0.into())
+    fn decode(&mut self, buf: &mut BytesMut)
+              -> Result<Option<Self::Item>, Self::Error> {
+        Ok(buf.as_ref().iter().position(|b| *b == self.0.clone().into())
            .map(|n| buf.split_to(n + 1).as_ref().to_vec()))
     }
 
-    fn decode_eof(&mut self, buf: &mut BytesMut) -> io::Result<Option<Self::Item>> {
+    fn decode_eof(&mut self, buf: &mut BytesMut)
+                  -> Result<Option<Self::Item>, Self::Error> {
         let buf = buf.split_off(0);
         if buf.is_empty() {
             Ok(None)
@@ -303,13 +305,14 @@ impl<D: Into<u8> + Copy> codec::Decoder for DelimCodec<D> {
     }
 }
 
-impl<D: Into<u8> + Copy> codec::Encoder for DelimCodec<D> {
+impl<D: Into<u8> + Clone> tokio_io::codec::Encoder for DelimCodec<D> {
     type Item = Vec<u8>;
     type Error = io::Error;
 
-    fn encode(&mut self, msg: Self::Item, buf: &mut BytesMut) -> io::Result<()> {
+    fn encode(&mut self, msg: Self::Item, buf: &mut BytesMut)
+              -> Result<(), Self::Error> {
         buf.extend(msg);
-        buf.put_u8(self.0.into());
+        buf.put_u8(self.0.clone().into());
         Ok(())
     }
 }
@@ -318,10 +321,8 @@ impl<D: Into<u8> + Copy> codec::Encoder for DelimCodec<D> {
 ///
 /// For an example, see [`File`](struct.File.html).
 ///
-/// ```
-/// # /*
-/// impl Into<u8> for Newline
-/// # */
+/// ```ignore
+/// impl Into<u8> for Newline;
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct Newline;

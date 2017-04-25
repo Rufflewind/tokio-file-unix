@@ -1,7 +1,10 @@
 extern crate futures;
-extern crate tokio_io;
 extern crate tokio_core;
+extern crate tokio_io;
 extern crate tokio_file_unix;
+
+use std::io::Write;
+use futures::{Future, future};
 
 fn main() {
     let mut core = tokio_core::reactor::Core::new().unwrap();
@@ -12,10 +15,16 @@ fn main() {
     let stdin = std::io::stdin();
     let file = tokio_file_unix::StdFile(stdin.lock());
     let file = tokio_file_unix::File::new_nb(file).unwrap();
-    let file = file.into_reader(&handle).unwrap();
+    let file = match file.into_reader(&handle) {
+        Err(ref e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            writeln!(std::io::stderr(),
+                     "Error: Regular files are not supported.").unwrap();
+            std::process::exit(1);
+        }
+        x => x,
+    }.unwrap();
 
     println!("Type something and hit enter!");
-    use futures::{Future, future};
     core.run(future::loop_fn((file, Vec::new()), |(file, line)| {
         // read each line
         tokio_io::io::read_until(file, b'\n', line).map(|(file, mut line)| {
