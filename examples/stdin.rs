@@ -42,7 +42,9 @@ fn main() {
                 line.clear();
                 future::Loop::Continue((file, line))
             } else {                    // EOF
-                println!("Got: {:?}", std::str::from_utf8(&line));
+                if !line.is_empty() {
+                    println!("Got: {:?}", std::str::from_utf8(&line));
+                }
                 future::Loop::Break(())
             }
         })
