@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/tokio-file-unix.svg)](https://crates.io/crates/tokio-file-unix)
 [![Travis CI Build Status](https://travis-ci.org/Rufflewind/tokio-file-unix.svg?branch=master)](https://travis-ci.org/Rufflewind/tokio-file-unix)
 
-Asynchronous support for file-like objects via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms and non-regular files such as standard I/O, pipes, or sockets.**
+Asynchronous support for file-like objects via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms.**
 
 ## Usage
 

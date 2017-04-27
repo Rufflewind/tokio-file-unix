@@ -5,20 +5,13 @@
 //! suitable for asynchronous I/O.  See [`DelimCodec`](struct.DelimCodec.html)
 //! for a more comprehensive example of reading the lines of a file using
 //! `futures::Stream`.
-//!
-//! Due to limitations of `epoll`, the library [does not support regular
-//! files][bug2].  Only pipes/FIFO and sockets are supported.  Standard I/O is
-//! okay as long as they are not redirected to regular files.  Any attempt to
-//! use a regular file will cause a permissions error (`EPERM`) when the
-//! `PollEvented` object gets constructed.
-//!
-//! [bug2]: https://github.com/Rufflewind/tokio-file-unix/issues/2
 extern crate bytes;
 extern crate libc;
 extern crate mio;
 extern crate tokio_core;
 extern crate tokio_io;
 
+use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 use bytes::{BufMut, BytesMut};
@@ -104,7 +97,10 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct File<F>(pub F);
+pub struct File<F> {
+    file: F,
+    evented: RefCell<Option<mio::Registration>>,
+}
 
 impl<F: AsRawFd> File<F> {
     /// Wraps a file-like object so it can be used with
@@ -117,7 +113,7 @@ impl<F: AsRawFd> File<F> {
     /// fn new_nb(impl AsRawFd) -> Result<impl Evented>;
     /// ```
     pub fn new_nb(file: F) -> io::Result<Self> {
-        let mut file = File(file);
+        let file = File::raw_new(file);
         file.set_nonblocking(true)?;
         Ok(file)
     }
@@ -128,7 +124,7 @@ impl<F: AsRawFd> File<F> {
     /// on.
     ///
     /// Implementation detail: uses `fcntl` to set `O_NONBLOCK`.
-    pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         unsafe {
             let fd = self.as_raw_fd();
             // shamelessly copied from libstd/sys/unix/fd.rs
@@ -151,9 +147,6 @@ impl<F: AsRawFd> File<F> {
     /// Converts into a pollable object that supports `std::io::AsyncRead` and
     /// `std::io::AsyncWrite`, making it suitable for `tokio_io::io::*`.
     ///
-    /// If the underlying file descriptor refers to a regular file, this may
-    /// fail with “Operation not permitted” (`EPERM`).
-    ///
     /// ```ignore
     /// fn into_io(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
     /// fn into_io(File<StdFile<StdinLock>>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
@@ -170,9 +163,6 @@ impl<F: AsRawFd + io::Read> File<F> {
     /// Converts into a pollable object that supports `std::io::Read` and
     /// `std::io::ReadBuf`, making it suitable for `tokio_io::io::read_*`.
     ///
-    /// If the underlying file descriptor refers to a regular file, this may
-    /// fail with “Operation not permitted” (`EPERM`).
-    ///
     /// ```ignore
     /// fn into_reader(File<std::fs::File>, &Handle) -> Result<impl ReadBuf>;
     /// fn into_reader(File<StdFile<StdinLock>>, &Handle) -> Result<impl ReadBuf>;
@@ -184,9 +174,22 @@ impl<F: AsRawFd + io::Read> File<F> {
     }
 }
 
+impl<F> File<F> {
+    /// Raw constructor that **does not enable nonblocking mode** on the
+    /// underlying file descriptor.  This constructor should only be used if
+    /// you are certain that the underlying file descriptor is already in
+    /// nonblocking mode.
+    pub fn raw_new(file: F) -> Self {
+        File {
+            file: file,
+            evented: Default::default(),
+        }
+    }
+}
+
 impl<F: AsRawFd> AsRawFd for File<F> {
     fn as_raw_fd(&self) -> RawFd {
-        self.0.as_raw_fd()
+        self.file.as_raw_fd()
     }
 }
 
@@ -194,36 +197,58 @@ impl<F: AsRawFd> mio::Evented for File<F> {
     fn register(&self, poll: &mio::Poll, token: mio::Token,
                 interest: mio::Ready, opts: mio::PollOpt)
                 -> io::Result<()> {
-        mio::unix::EventedFd(&self.as_raw_fd())
-            .register(poll, token, interest, opts)
+        match mio::unix::EventedFd(&self.as_raw_fd())
+                  .register(poll, token, interest, opts) {
+            // this is a workaround for regular files, which are not supported
+            // by epoll; they would instead cause EPERM upon registration
+            Err(ref e) if e.raw_os_error() == Some(libc::EPERM) => {
+                self.set_nonblocking(false)?;
+                // workaround: PollEvented/IoToken always starts off in the
+                // "not ready" state so we have to use a real Evented object
+                // to set its readiness state
+                let (r, s) = mio::Registration::new2();
+                r.register(poll, token, interest, opts)?;
+                s.set_readiness(mio::Ready::readable() |
+                                     mio::Ready::writable())?;
+                *self.evented.borrow_mut() = Some(r);
+                Ok(())
+            }
+            e => e,
+        }
     }
 
     fn reregister(&self, poll: &mio::Poll, token: mio::Token,
                   interest: mio::Ready, opts: mio::PollOpt)
                   -> io::Result<()> {
-        mio::unix::EventedFd(&self.as_raw_fd())
-            .reregister(poll, token, interest, opts)
+        match &*self.evented.borrow() {
+            &None => mio::unix::EventedFd(&self.as_raw_fd())
+                             .reregister(poll, token, interest, opts),
+            &Some(ref r) => r.reregister(poll, token, interest, opts),
+        }
     }
 
     fn deregister(&self, poll: &mio::Poll) -> io::Result<()> {
-        mio::unix::EventedFd(&self.as_raw_fd())
-            .deregister(poll)
+        match &*self.evented.borrow() {
+            &None => mio::unix::EventedFd(&self.as_raw_fd())
+                             .deregister(poll),
+            &Some(ref r) => mio::Evented::deregister(r, poll),
+        }
     }
 }
 
 impl<F: io::Read> io::Read for File<F> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
+        self.file.read(buf)
     }
 }
 
 impl<F: io::Write> io::Write for File<F> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
+        self.file.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
+        self.file.flush()
     }
 }
 
