@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+  - Documentation fixes.
+
 ## 0.4.0
 
   - Added “support” for regular files (which never block anyway).

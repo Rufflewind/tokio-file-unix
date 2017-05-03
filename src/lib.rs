@@ -22,9 +22,9 @@ use tokio_core::reactor::{Handle, PollEvented};
 /// For an example, see [`File`](struct.File.html).
 ///
 /// ```ignore
-/// impl AsRawFd + Read + Write for File<StdinLock>
-/// impl AsRawFd + Read + Write for File<StdoutLock>
-/// impl AsRawFd + Read + Write for File<StderrLock>
+/// impl AsRawFd + Read for File<StdinLock>
+/// impl AsRawFd + Write for File<StdoutLock>
+/// impl AsRawFd + Write for File<StderrLock>
 /// ```
 pub struct StdFile<F>(pub F);
 
@@ -89,11 +89,23 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// ## Example: wrapping standard input
 ///
 /// ```
-/// # use tokio_file_unix::*;
+/// # extern crate futures;
+/// # extern crate tokio_core;
+/// # extern crate tokio_io;
+/// # extern crate tokio_file_unix;
+/// # use futures::Future;
+/// # use tokio_file_unix::{File, StdFile};
+/// # fn main() {
 /// # fn test() -> std::io::Result<()> {
+/// let mut core = tokio_core::reactor::Core::new()?;
 /// let stdin = std::io::stdin();
-/// let file = File::new_nb(StdFile(stdin.lock()))?;
+/// let file = File::new_nb(StdFile(stdin.lock()))?.into_reader(&core.handle())?;
+///
+/// core.run(tokio_io::io::read_until(file, b'\n', Vec::new()).map(|(_, line)| {
+///     println!("{:?}", std::str::from_utf8(&line));
+/// }))?;
 /// # Ok(())
+/// # }
 /// # }
 /// ```
 #[derive(Debug)]
@@ -109,7 +121,9 @@ impl<F: AsRawFd> File<F> {
     ///
     /// ```ignore
     /// fn new_nb(std::fs::File) -> Result<impl Evented + Read + Write>;
-    /// fn new_nb(StdFile<StdinLock>) -> Result<impl Evented + Read + Write>;
+    /// fn new_nb(StdFile<StdinLock>) -> Result<impl Evented + Read>;
+    /// fn new_nb(StdFile<StdoutLock>) -> Result<impl Evented + Write>;
+    /// fn new_nb(StdFile<StderrLock>) -> Result<impl Evented + Write>;
     /// fn new_nb(impl AsRawFd) -> Result<impl Evented>;
     /// ```
     pub fn new_nb(file: F) -> io::Result<Self> {
@@ -144,15 +158,14 @@ impl<F: AsRawFd> File<F> {
         }
     }
 
-    /// Converts into a pollable object that supports `std::io::AsyncRead` and
-    /// `std::io::AsyncWrite`, making it suitable for `tokio_io::io::*`.
+    /// Converts into a pollable object that supports `tokio_io::AsyncRead`
+    /// and `tokio_io::AsyncWrite`, making it suitable for `tokio_io::io::*`.
     ///
     /// ```ignore
     /// fn into_io(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
     /// fn into_io(File<StdFile<StdinLock>>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
     /// fn into_io(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead>;
     /// fn into_io(File<impl AsRawFd + Write>, &Handle) -> Result<impl AsyncWrite>;
-    /// fn into_io(File<impl AsRawFd + Read + Write>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
     /// ```
     pub fn into_io(self, handle: &Handle) -> io::Result<PollEvented<Self>> {
         Ok(PollEvented::new(self, handle)?)
@@ -160,13 +173,13 @@ impl<F: AsRawFd> File<F> {
 }
 
 impl<F: AsRawFd + io::Read> File<F> {
-    /// Converts into a pollable object that supports `std::io::Read` and
-    /// `std::io::ReadBuf`, making it suitable for `tokio_io::io::read_*`.
+    /// Converts into a pollable object that supports `tokio_io::AsyncRead`
+    /// and `std::io::BufRead`, making it suitable for `tokio_io::io::read_*`.
     ///
     /// ```ignore
-    /// fn into_reader(File<std::fs::File>, &Handle) -> Result<impl ReadBuf>;
-    /// fn into_reader(File<StdFile<StdinLock>>, &Handle) -> Result<impl ReadBuf>;
-    /// fn into_reader(File<impl AsRawFd + Read>, &Handle) -> Result<impl ReadBuf>;
+    /// fn into_reader(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + BufRead>;
+    /// fn into_reader(File<StdFile<StdinLock>>, &Handle) -> Result<impl AsyncRead + BufRead>;
+    /// fn into_reader(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead + BufRead>;
     /// ```
     pub fn into_reader(self, handle: &Handle)
                        -> io::Result<io::BufReader<PollEvented<Self>>> {
