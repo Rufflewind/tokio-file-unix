@@ -2,7 +2,7 @@
 
 ## 0.4.1
 
-  - Documentation fixes.
+  - Improved documentation and added another example `stdin_lines.rs`.
 
 ## 0.4.0
 

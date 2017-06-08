@@ -1,0 +1,4 @@
+Type something and hit enter!
+Got: "The quick brown fox"
+Got: "jumps over the lazy"
+Got: "dog."

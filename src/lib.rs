@@ -86,28 +86,42 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// impl Evented for File<impl AsRawFd>;
 /// ```
 ///
-/// ## Example: wrapping standard input
+/// ## Example: read standard input line by line
 ///
 /// ```
-/// # extern crate futures;
-/// # extern crate tokio_core;
-/// # extern crate tokio_io;
-/// # extern crate tokio_file_unix;
-/// # use futures::Future;
-/// # use tokio_file_unix::{File, StdFile};
+/// extern crate futures;
+/// extern crate tokio_core;
+/// extern crate tokio_io;
+/// extern crate tokio_file_unix;
+///
+/// use futures::Stream;
+/// use tokio_io::{io, AsyncRead, AsyncWrite};
+/// use tokio_io::codec::FramedRead;
+/// use tokio_file_unix::{File, StdFile};
+/// #
 /// # fn main() {
 /// # fn test() -> std::io::Result<()> {
-/// let mut core = tokio_core::reactor::Core::new()?;
-/// let stdin = std::io::stdin();
-/// let file = File::new_nb(StdFile(stdin.lock()))?.into_reader(&core.handle())?;
 ///
-/// core.run(tokio_io::io::read_until(file, b'\n', Vec::new()).map(|(_, line)| {
-///     println!("{:?}", std::str::from_utf8(&line));
-/// }))?;
+/// // initialize the event loop
+/// let mut core = tokio_core::reactor::Core::new()?;
+/// let handle = core.handle();
+///
+/// // get the standard input as a file
+/// let stdin = std::io::stdin();
+/// let reader = File::new_nb(StdFile(stdin.lock()))?.into_reader(&handle)?;
+///
+/// // turn it into a stream of lines and process them
+/// let future = io::lines(reader).for_each(|line| {
+///     println!("Got: {}", line);
+///     Ok(())
+/// });
+///
+/// // start the event loop
+/// core.run(future)?;
+///
 /// # Ok(())
 /// # }
 /// # }
-/// ```
 #[derive(Debug)]
 pub struct File<F> {
     file: F,
@@ -267,7 +281,7 @@ impl<F: io::Write> io::Write for File<F> {
 
 /// A `Codec` that splits the stream into frames divided by a given delimiter
 /// byte.  All frames except possibly the last one contain the delimiter byte
-/// as the last element.
+/// as the last element (this behavior differs from `tokio_io::io::lines`).
 ///
 /// ```ignore
 /// impl Codec for DelimCodec<u8>;
@@ -281,12 +295,12 @@ impl<F: io::Write> io::Write for File<F> {
 /// extern crate futures;
 /// extern crate tokio_core;
 /// extern crate tokio_io;
-/// # extern crate tokio_file_unix;
+/// extern crate tokio_file_unix;
 ///
 /// use futures::Stream;
-/// use tokio_io::{AsyncRead, AsyncWrite};
+/// use tokio_io::{io, AsyncRead, AsyncWrite};
 /// use tokio_io::codec::FramedRead;
-/// # use tokio_file_unix::*;
+/// use tokio_file_unix::{File, StdFile, DelimCodec, Newline};
 /// #
 /// # fn main() {
 /// # fn test() -> std::io::Result<()> {
@@ -306,7 +320,7 @@ impl<F: io::Write> io::Write for File<F> {
 ///     })
 /// });
 ///
-/// // specify how each line is to be processed
+/// // turn it into a stream of lines and process them
 /// let future = line_stream.for_each(|line| {
 ///     println!("Got: {}", line);
 ///     Ok(())
