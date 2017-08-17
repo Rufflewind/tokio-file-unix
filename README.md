@@ -6,6 +6,8 @@
 
 Asynchronous support for file-like objects via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms.**
 
+This crate is primarily intended for pipes and other files that support nonblocking I/O.  Regular files do not support nonblocking I/O, so this crate has no effect on them.
+
 ## Usage
 
 Add this to your `Cargo.toml`:

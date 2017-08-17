@@ -1,6 +1,10 @@
 //! A utility library that adds asynchronous support to file-like objects on
 //! Unix-like platforms.
 //!
+//! This crate is primarily intended for pipes and other files that support
+//! nonblocking I/O.  Regular files do not support nonblocking I/O, so this
+//! crate has no effect on them.
+//!
 //! See [`File`](struct.File.html) for an example of how a file can be made
 //! suitable for asynchronous I/O.  See [`DelimCodec`](struct.DelimCodec.html)
 //! for a more comprehensive example of reading the lines of a file using
@@ -79,6 +83,9 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// directly, unless the underlying file descriptor has already been set to
 /// nonblocking mode.  Using a file that is not in nonblocking mode for
 /// asynchronous I/O will lead to subtle bugs.
+///
+/// Wrapping regular files has no effect because they do not support
+/// nonblocking mode.
 ///
 /// ```ignore
 /// impl Evented for File<std::fs::File>;
