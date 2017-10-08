@@ -79,10 +79,10 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// Used to wrap file-like objects so they can be used with
 /// `tokio_core::reactor::PollEvented`.
 ///
-/// Normally, you should use `File::new_nb` rather than the `File` constructor
-/// directly, unless the underlying file descriptor has already been set to
-/// nonblocking mode.  Using a file that is not in nonblocking mode for
-/// asynchronous I/O will lead to subtle bugs.
+/// Normally, you should use `File::new_nb` rather than `File::raw_new` unless
+/// the underlying file descriptor has already been set to nonblocking mode.
+/// Using a file descriptor that is not in nonblocking mode for asynchronous
+/// I/O will lead to subtle and confusing bugs.
 ///
 /// Wrapping regular files has no effect because they do not support
 /// nonblocking mode.
@@ -129,6 +129,27 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// # Ok(())
 /// # }
 /// # }
+/// ```
+///
+/// ## Example: unsafe creation from raw file descriptor
+///
+/// To unsafely create `File<F>` from a raw file descriptor `fd`, you can do
+/// something like:
+///
+/// ```
+/// # use std::os::unix::io::{AsRawFd, RawFd};
+/// use std::os::unix::io::FromRawFd;
+///
+/// # unsafe fn test<F: AsRawFd + FromRawFd>(fd: RawFd) -> std::io::Result<()> {
+/// let file = tokio_file_unix::File::new_nb(F::from_raw_fd(fd))?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// which will enable nonblocking mode upon creation.  The choice of `F` is
+/// critical: it determines the ownership semantics of the file descriptor.
+/// For example, if you choose `F = std::fs::File`, the file descriptor will
+/// be closed upon destruction.
 #[derive(Debug)]
 pub struct File<F> {
     file: F,
