@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+
+  - Add `File::get_nonblocking`.
+
 ## 0.4.1
 
   - Improved documentation and added another example `stdin_lines.rs`.

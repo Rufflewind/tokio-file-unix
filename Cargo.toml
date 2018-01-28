@@ -1,6 +1,6 @@
 [package]
 name = "tokio-file-unix"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Phil Ruffwind <rf@rufflewind.com>"]
 description = "Asynchronous support for epollable files via Tokio on Unix-like platforms"
 documentation = "https://docs.rs/tokio-file-unix"

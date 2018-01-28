@@ -174,6 +174,19 @@ impl<F: AsRawFd> File<F> {
         Ok(file)
     }
 
+    /// Gets the nonblocking mode of the underlying file descriptor.
+    ///
+    /// Implementation detail: uses `fcntl` to retrieve `O_NONBLOCK`.
+    pub fn get_nonblocking(&self) -> io::Result<bool> {
+        unsafe {
+            let flags = libc::fcntl(self.as_raw_fd(), libc::F_GETFL);
+            if flags < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(flags & libc::O_NONBLOCK != 0)
+        }
+    }
+
     /// Sets the nonblocking mode of the underlying file descriptor to either
     /// on (`true`) or off (`false`).  If `File::new_nb` was previously used
     /// to construct the `File`, then nonblocking mode has already been turned
@@ -410,5 +423,36 @@ pub struct Newline;
 impl From<Newline> for u8 {
     fn from(_: Newline) -> Self {
         b'\n'
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::io::{AsRawFd, RawFd};
+    use std::os::unix::net::UnixStream;
+
+    pub struct RefAsRawFd<T>(pub T);
+    impl<'a, T: AsRawFd> AsRawFd for RefAsRawFd<&'a T> {
+        fn as_raw_fd(&self) -> RawFd { self.0.as_raw_fd() }
+    }
+
+    #[test]
+    fn test_nonblocking() {
+        let (sock, _) = UnixStream::pair().unwrap();
+        {
+            let file = File::new_nb(RefAsRawFd(&sock)).unwrap();
+            assert!(file.get_nonblocking().unwrap());
+            file.set_nonblocking(false).unwrap();
+            assert!(!file.get_nonblocking().unwrap());
+            file.set_nonblocking(true).unwrap();
+            assert!(file.get_nonblocking().unwrap());
+            file.set_nonblocking(false).unwrap();
+            assert!(!file.get_nonblocking().unwrap());
+        }
+        {
+            let file = File::raw_new(RefAsRawFd(&sock));
+            assert!(!file.get_nonblocking().unwrap());
+        }
     }
 }
