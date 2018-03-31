@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+  - Migrate from `tokio-core` to `tokio-reactor`.
+  - Add `raw_std{in,out,err}` and deprecate `StdFile` in favor of those.
+
 ## 0.4.2
 
   - Add `File::get_nonblocking`.

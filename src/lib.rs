@@ -12,14 +12,43 @@
 extern crate bytes;
 extern crate libc;
 extern crate mio;
-extern crate tokio_core;
 extern crate tokio_io;
+extern crate tokio_reactor;
 
 use std::cell::RefCell;
-use std::io;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::{fs, io};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use bytes::{BufMut, BytesMut};
-use tokio_core::reactor::{Handle, PollEvented};
+use tokio_reactor::{Handle, PollEvented};
+
+unsafe fn dupe_file_from_fd(old_fd: RawFd) -> io::Result<fs::File> {
+    let fd = libc::fcntl(old_fd, libc::F_DUPFD_CLOEXEC, 0);
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(fs::File::from_raw_fd(fd))
+}
+
+/// Duplicate the standard input file.
+///
+/// Unlike `std::io::Stdin`, this file is not buffered.
+pub fn raw_stdin() -> io::Result<fs::File> {
+    unsafe { dupe_file_from_fd(libc::STDIN_FILENO) }
+}
+
+/// Duplicate the standard output file.
+///
+/// Unlike `std::io::Stdout`, this file is not buffered.
+pub fn raw_stdout() -> io::Result<fs::File> {
+    unsafe { dupe_file_from_fd(libc::STDOUT_FILENO) }
+}
+
+/// Duplicate the standard error file.
+///
+/// Unlike `std::io::Stderr`, this file is not buffered.
+pub fn raw_stderr() -> io::Result<fs::File> {
+    unsafe { dupe_file_from_fd(libc::STDERR_FILENO) }
+}
 
 /// Wrapper for `std::io::Std*Lock` that can be used with `File`.
 ///
@@ -30,32 +59,38 @@ use tokio_core::reactor::{Handle, PollEvented};
 /// impl AsRawFd + Write for File<StdoutLock>
 /// impl AsRawFd + Write for File<StderrLock>
 /// ```
+#[deprecated(since="0.5.0", note="Use raw_std{in,out,err}()")]
 pub struct StdFile<F>(pub F);
 
+#[allow(deprecated)]
 impl<'a> AsRawFd for StdFile<io::StdinLock<'a>> {
     fn as_raw_fd(&self) -> RawFd {
         libc::STDIN_FILENO
     }
 }
 
+#[allow(deprecated)]
 impl<'a> AsRawFd for StdFile<io::StdoutLock<'a>> {
     fn as_raw_fd(&self) -> RawFd {
         libc::STDOUT_FILENO
     }
 }
 
+#[allow(deprecated)]
 impl<'a> AsRawFd for StdFile<io::StderrLock<'a>> {
     fn as_raw_fd(&self) -> RawFd {
         libc::STDERR_FILENO
     }
 }
 
+#[allow(deprecated)]
 impl<'a> io::Read for StdFile<io::StdinLock<'a>> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.0.read(buf)
     }
 }
 
+#[allow(deprecated)]
 impl<'a> io::Write for StdFile<io::StdoutLock<'a>> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.write(buf)
@@ -66,6 +101,7 @@ impl<'a> io::Write for StdFile<io::StdoutLock<'a>> {
     }
 }
 
+#[allow(deprecated)]
 impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.write(buf)
@@ -89,7 +125,6 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 ///
 /// ```ignore
 /// impl Evented for File<std::fs::File>;
-/// impl Evented for File<StdFile<StdinLock>>;
 /// impl Evented for File<impl AsRawFd>;
 /// ```
 ///
@@ -97,34 +132,29 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 ///
 /// ```
 /// extern crate futures;
-/// extern crate tokio_core;
+/// extern crate tokio;
 /// extern crate tokio_io;
 /// extern crate tokio_file_unix;
 ///
-/// use futures::Stream;
-/// use tokio_io::{io, AsyncRead, AsyncWrite};
+/// use futures::{Future, Stream};
 /// use tokio_io::codec::FramedRead;
-/// use tokio_file_unix::{File, StdFile};
 /// #
 /// # fn main() {
 /// # fn test() -> std::io::Result<()> {
 ///
-/// // initialize the event loop
-/// let mut core = tokio_core::reactor::Core::new()?;
-/// let handle = core.handle();
-///
 /// // get the standard input as a file
-/// let stdin = std::io::stdin();
-/// let reader = File::new_nb(StdFile(stdin.lock()))?.into_reader(&handle)?;
+/// let stdin = tokio_file_unix::raw_stdin()?;
+/// let file = tokio_file_unix::File::new_nb(stdin)?;
+/// let reader = file.into_reader(&tokio::reactor::Handle::current())?;
 ///
 /// // turn it into a stream of lines and process them
-/// let future = io::lines(reader).for_each(|line| {
+/// let future = tokio::io::lines(reader).for_each(|line| {
 ///     println!("Got: {}", line);
 ///     Ok(())
-/// });
+/// }).map_err(|e| panic!("{:?}", e));
 ///
 /// // start the event loop
-/// core.run(future)?;
+/// tokio::run(future);
 ///
 /// # Ok(())
 /// # }
@@ -149,7 +179,7 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// which will enable nonblocking mode upon creation.  The choice of `F` is
 /// critical: it determines the ownership semantics of the file descriptor.
 /// For example, if you choose `F = std::fs::File`, the file descriptor will
-/// be closed upon destruction.
+/// be closed when the `File` is dropped.
 #[derive(Debug)]
 pub struct File<F> {
     file: F,
@@ -163,9 +193,6 @@ impl<F: AsRawFd> File<F> {
     ///
     /// ```ignore
     /// fn new_nb(std::fs::File) -> Result<impl Evented + Read + Write>;
-    /// fn new_nb(StdFile<StdinLock>) -> Result<impl Evented + Read>;
-    /// fn new_nb(StdFile<StdoutLock>) -> Result<impl Evented + Write>;
-    /// fn new_nb(StdFile<StderrLock>) -> Result<impl Evented + Write>;
     /// fn new_nb(impl AsRawFd) -> Result<impl Evented>;
     /// ```
     pub fn new_nb(file: F) -> io::Result<Self> {
@@ -218,12 +245,11 @@ impl<F: AsRawFd> File<F> {
     ///
     /// ```ignore
     /// fn into_io(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
-    /// fn into_io(File<StdFile<StdinLock>>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
     /// fn into_io(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead>;
     /// fn into_io(File<impl AsRawFd + Write>, &Handle) -> Result<impl AsyncWrite>;
     /// ```
     pub fn into_io(self, handle: &Handle) -> io::Result<PollEvented<Self>> {
-        Ok(PollEvented::new(self, handle)?)
+        PollEvented::new_with_handle(self, handle)
     }
 }
 
@@ -233,7 +259,6 @@ impl<F: AsRawFd + io::Read> File<F> {
     ///
     /// ```ignore
     /// fn into_reader(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + BufRead>;
-    /// fn into_reader(File<StdFile<StdinLock>>, &Handle) -> Result<impl AsyncRead + BufRead>;
     /// fn into_reader(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead + BufRead>;
     /// ```
     pub fn into_reader(self, handle: &Handle)
@@ -334,28 +359,24 @@ impl<F: io::Write> io::Write for File<F> {
 ///
 /// ```
 /// extern crate futures;
-/// extern crate tokio_core;
+/// extern crate tokio;
 /// extern crate tokio_io;
 /// extern crate tokio_file_unix;
 ///
-/// use futures::Stream;
-/// use tokio_io::{io, AsyncRead, AsyncWrite};
+/// use futures::{Future, Stream};
 /// use tokio_io::codec::FramedRead;
-/// use tokio_file_unix::{File, StdFile, DelimCodec, Newline};
 /// #
 /// # fn main() {
 /// # fn test() -> std::io::Result<()> {
 ///
-/// // initialize the event loop
-/// let mut core = tokio_core::reactor::Core::new()?;
-/// let handle = core.handle();
-///
 /// // get the standard input as a file
-/// let stdin = std::io::stdin();
-/// let io = File::new_nb(StdFile(stdin.lock()))?.into_io(&handle)?;
+/// let stdin = tokio_file_unix::raw_stdin()?;
+/// let file = tokio_file_unix::File::new_nb(stdin)?;
+/// let io = file.into_io(&tokio::reactor::Handle::default())?;
 ///
 /// // turn it into a stream of lines, decoded as UTF-8
-/// let line_stream = FramedRead::new(io, DelimCodec(Newline)).and_then(|line| {
+/// let codec = tokio_file_unix::DelimCodec(tokio_file_unix::Newline);
+/// let line_stream = FramedRead::new(io, codec).and_then(|line| {
 ///     String::from_utf8(line).map_err(|_| {
 ///         std::io::Error::from(std::io::ErrorKind::InvalidData)
 ///     })
@@ -365,10 +386,10 @@ impl<F: io::Write> io::Write for File<F> {
 /// let future = line_stream.for_each(|line| {
 ///     println!("Got: {}", line);
 ///     Ok(())
-/// });
+/// }).map_err(|e| panic!("{:?}", e));
 ///
 /// // start the event loop
-/// core.run(future)?;
+/// tokio::run(future);
 ///
 /// # Ok(())
 /// # }
