@@ -18,12 +18,12 @@ fn main() {
         future::loop_fn((file, Vec::new()), |(file, line)| {
             // read each line
             tokio_io::io::read_until(file, b'\n', line).map(|(file, mut line)| {
-                // demonstrate that the event loop isn't blocked by I/O!
-                tokio::executor::current_thread::spawn(futures::lazy(|| {
-                    Ok(println!("I'm asynchronous"))
-                }));
-
                 if line.ends_with(b"\n") {
+                    // demonstrate that the event loop isn't blocked by I/O!
+                    tokio::executor::current_thread::spawn(futures::lazy(|| {
+                        Ok(println!("I'm asynchronous"))
+                    }));
+
                     println!("Got: {:?}", std::str::from_utf8(&line));
                     line.clear();
                     future::Loop::Continue((file, line))
