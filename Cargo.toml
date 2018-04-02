@@ -21,4 +21,3 @@ tokio-io = "0.1.6"
 [dev-dependencies]
 futures = "0.1"
 tokio = "0.1"
-tokio-timer = "0.2"
