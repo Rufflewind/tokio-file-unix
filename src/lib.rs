@@ -97,7 +97,7 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 ///
 /// ```
 /// extern crate futures;
-/// extern crate tokio_core;
+/// extern crate tokio;
 /// extern crate tokio_io;
 /// extern crate tokio_file_unix;
 ///
@@ -109,13 +109,9 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// # fn main() {
 /// # fn test() -> std::io::Result<()> {
 ///
-/// // initialize the event loop
-/// let mut core = tokio_core::reactor::Core::new()?;
-/// let handle = core.handle();
-///
 /// // get the standard input as a file
 /// let stdin = std::io::stdin();
-/// let reader = File::new_nb(StdFile(stdin.lock()))?.into_reader(&handle)?;
+/// let reader = File::new_nb(StdFile(stdin.lock()))?.into_reader();
 ///
 /// // turn it into a stream of lines and process them
 /// let future = io::lines(reader).for_each(|line| {
@@ -124,7 +120,7 @@ impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
 /// });
 ///
 /// // start the event loop
-/// core.run(future)?;
+/// tokio::executor::current_thread::block_on_all(future);
 ///
 /// # Ok(())
 /// # }
@@ -217,10 +213,10 @@ impl<F: AsRawFd> File<F> {
     /// and `tokio_io::AsyncWrite`, making it suitable for `tokio_io::io::*`.
     ///
     /// ```ignore
-    /// fn into_io(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
-    /// fn into_io(File<StdFile<StdinLock>>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
-    /// fn into_io(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead>;
-    /// fn into_io(File<impl AsRawFd + Write>, &Handle) -> Result<impl AsyncWrite>;
+    /// fn into_io(File<std::fs::File>) -> impl AsyncRead + AsyncWrite;
+    /// fn into_io(File<StdFile<StdinLock>>) -> impl AsyncRead + AsyncWrite;
+    /// fn into_io(File<impl AsRawFd + Read>) -> impl AsyncRead;
+    /// fn into_io(File<impl AsRawFd + Write>) -> impl AsyncWrite;
     /// ```
     pub fn into_io(self) -> PollEvented<Self> {
         PollEvented::new(self)
@@ -232,9 +228,9 @@ impl<F: AsRawFd + io::Read> File<F> {
     /// and `std::io::BufRead`, making it suitable for `tokio_io::io::read_*`.
     ///
     /// ```ignore
-    /// fn into_reader(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + BufRead>;
-    /// fn into_reader(File<StdFile<StdinLock>>, &Handle) -> Result<impl AsyncRead + BufRead>;
-    /// fn into_reader(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead + BufRead>;
+    /// fn into_reader(File<std::fs::File>) -> impl AsyncRead + BufRead;
+    /// fn into_reader(File<StdFile<StdinLock>>) -> impl AsyncRead + BufRead;
+    /// fn into_reader(File<impl AsRawFd + Read>) -> impl AsyncRead + BufRead;
     /// ```
     pub fn into_reader(self) -> io::BufReader<PollEvented<Self>> {
         io::BufReader::new(self.into_io())
@@ -339,7 +335,7 @@ impl<F: io::Write> io::Write for File<F> {
 ///
 /// ```
 /// extern crate futures;
-/// extern crate tokio_core;
+/// extern crate tokio;
 /// extern crate tokio_io;
 /// extern crate tokio_file_unix;
 ///
@@ -351,13 +347,9 @@ impl<F: io::Write> io::Write for File<F> {
 /// # fn main() {
 /// # fn test() -> std::io::Result<()> {
 ///
-/// // initialize the event loop
-/// let mut core = tokio_core::reactor::Core::new()?;
-/// let handle = core.handle();
-///
 /// // get the standard input as a file
 /// let stdin = std::io::stdin();
-/// let io = File::new_nb(StdFile(stdin.lock()))?.into_io(&handle)?;
+/// let io = File::new_nb(StdFile(stdin.lock()))?.into_io();
 ///
 /// // turn it into a stream of lines, decoded as UTF-8
 /// let line_stream = FramedRead::new(io, DelimCodec(Newline)).and_then(|line| {
@@ -373,7 +365,7 @@ impl<F: io::Write> io::Write for File<F> {
 /// });
 ///
 /// // start the event loop
-/// core.run(future)?;
+/// tokio::executor::current_thread::block_on_all(future)?;
 ///
 /// # Ok(())
 /// # }
