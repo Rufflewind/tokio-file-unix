@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 set -eux
 for example in stdin stdin_stream; do
     cat tests/test_input.txt | cargo run --example "${example}" | diff -u tests/test_output.txt -
@@ -6,3 +6,6 @@ for example in stdin stdin_stream; do
 done
 cat tests/test_input.txt | cargo run --example stdin_lines | diff -u tests/test_lines_output.txt -
 cargo run --example stdin_lines </dev/null | tail -n +2 | diff -u /dev/null -
+
+cargo run --example seek
+diff -q tests/seek.txt <(echo aaccccAAbbbbbbbb)

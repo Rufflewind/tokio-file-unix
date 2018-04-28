@@ -345,6 +345,12 @@ impl<F: io::Write> io::Write for File<F> {
     }
 }
 
+impl<F: io::Seek> io::Seek for File<F> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.file.seek(pos)
+    }
+}
+
 /// A `Codec` that splits the stream into frames divided by a given delimiter
 /// byte.  All frames except possibly the last one contain the delimiter byte
 /// as the last element (this behavior differs from `tokio_io::io::lines`).

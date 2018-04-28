@@ -74,3 +74,6 @@ Cargo.lock
 .sass-cache
 *.css.map
 *.js.map
+
+# Examples / Tests output
+tests/seek.txt
