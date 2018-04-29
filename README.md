@@ -14,7 +14,7 @@ Add this to your `Cargo.toml`:
 
 ~~~toml
 [dependencies]
-tokio-file-unix = "0.5.0"
+tokio-file-unix = "0.5.1"
 ~~~
 
 Next, add this to the root module of your crate:

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1
+
+  - Add `impl<F: Seek> Seek for File<F>`.
+
 ## 0.5.0
 
   - Migrate from `tokio-core` to `tokio-reactor`.
