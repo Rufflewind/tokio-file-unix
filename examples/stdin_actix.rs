@@ -5,10 +5,8 @@ use tokio_util::codec::FramedRead;
 use tokio_util::codec::LinesCodec;
 use crate::tokio::stream::StreamExt;
 
-#[tokio::main]
+#[actix_rt::main]
 async fn main() {
-    // convert stdin into a nonblocking file;
-    // this is the only part that makes use of tokio_file_unix
     let file = tokio_file_unix::raw_stdin().unwrap();
     let file = tokio_file_unix::File::new_nb(file).unwrap();
     let file = file.into_io().unwrap();
