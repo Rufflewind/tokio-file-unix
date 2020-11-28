@@ -15,9 +15,8 @@ async fn main() {
 
     let mut framed = FramedRead::new(file, LinesCodec::new());
 
+    println!("Type something and hit enter!");
     while let Some(got) = framed.next().await {
-        println!("Got this: {:?}", got);
+        println!("Got: {:?}", got);
     }
-
-    println!("Received None, lol");
 }

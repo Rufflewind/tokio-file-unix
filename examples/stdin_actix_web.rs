@@ -1,6 +1,9 @@
+extern crate futures;
 extern crate tokio;
 extern crate tokio_file_unix;
 
+use futures::{pin_mut, select};
+use futures::future::FutureExt;
 use tokio_util::codec::FramedRead;
 use tokio_util::codec::LinesCodec;
 use crate::tokio::stream::StreamExt;
@@ -14,7 +17,8 @@ async fn index(info: web::Path<String>) -> impl Responder {
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    actix_rt::spawn(async {
+    println!("Type something and hit enter!");
+    let stdin_fut = async {
         let file = tokio_file_unix::raw_stdin().unwrap();
         let file = tokio_file_unix::File::new_nb(file).unwrap();
         let file = file.into_io().unwrap();
@@ -35,10 +39,17 @@ async fn main() -> std::io::Result<()> {
 
             println!("Got bytes: {:?}", String::from_utf8(body.to_vec()).unwrap());
         }
-    });
+        Ok(())
+    }.fuse();
 
-    HttpServer::new(|| App::new().service(index))
+    let server_fut = HttpServer::new(|| App::new().service(index))
         .bind("127.0.0.1:8080")?
-        .start()
-        .await
+        .run()
+        .fuse();
+
+    pin_mut!(stdin_fut, server_fut);
+    select! {
+        result = stdin_fut => result,
+        result = server_fut => result,
+    }
 }

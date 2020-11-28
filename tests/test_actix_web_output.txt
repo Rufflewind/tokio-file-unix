@@ -1,0 +1,7 @@
+Type something and hit enter!
+Sending this: Ok("the-quick-brown-fox")
+Got bytes: "Hello Got this: the-quick-brown-fox"
+Sending this: Ok("jumps-over-the-lazy")
+Got bytes: "Hello Got this: jumps-over-the-lazy"
+Sending this: Ok("dog")
+Got bytes: "Hello Got this: dog"
