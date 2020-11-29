@@ -42,6 +42,48 @@ pub fn raw_stderr() -> io::Result<fs::File> {
     unsafe { dupe_file_from_fd(libc::STDERR_FILENO) }
 }
 
+/// Gets the nonblocking mode of the underlying file descriptor.
+///
+/// Implementation detail: uses `fcntl` to retrieve `O_NONBLOCK`.
+pub fn get_nonblocking<F: AsRawFd>(file: &F) -> io::Result<bool> {
+    unsafe {
+        let flags = libc::fcntl(file.as_raw_fd(), libc::F_GETFL);
+        if flags < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(flags & libc::O_NONBLOCK != 0)
+    }
+}
+
+/// Sets the nonblocking mode of the underlying file descriptor to either on
+/// (`true`) or off (`false`).  If `File::new_nb` was previously used to
+/// construct the `File`, then nonblocking mode has already been turned on.
+///
+/// This function is not atomic. It should only called if you have exclusive
+/// control of the underlying file descriptor.
+///
+/// Implementation detail: uses `fcntl` to query the flags and set
+/// `O_NONBLOCK`.
+pub fn set_nonblocking<F: AsRawFd>(file: &mut F, nonblocking: bool) -> io::Result<()> {
+    unsafe {
+        let fd = file.as_raw_fd();
+        // shamelessly copied from libstd/sys/unix/fd.rs
+        let previous = libc::fcntl(fd, libc::F_GETFL);
+        if previous < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let new = if nonblocking {
+            previous | libc::O_NONBLOCK
+        } else {
+            previous & !libc::O_NONBLOCK
+        };
+        if libc::fcntl(fd, libc::F_SETFL, new) < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+}
+
 /// Used to wrap file-like objects so they can be used with
 /// `tokio_core::reactor::PollEvented`.
 ///
@@ -118,49 +160,9 @@ impl<F: AsRawFd> File<F> {
     /// fn new_nb(std::fs::File) -> Result<impl Evented + Read + Write>;
     /// fn new_nb(impl AsRawFd) -> Result<impl Evented>;
     /// ```
-    pub fn new_nb(file: F) -> io::Result<Self> {
-        let file = File::raw_new(file);
-        file.set_nonblocking(true)?;
-        Ok(file)
-    }
-
-    /// Gets the nonblocking mode of the underlying file descriptor.
-    ///
-    /// Implementation detail: uses `fcntl` to retrieve `O_NONBLOCK`.
-    pub fn get_nonblocking(&self) -> io::Result<bool> {
-        unsafe {
-            let flags = libc::fcntl(self.as_raw_fd(), libc::F_GETFL);
-            if flags < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(flags & libc::O_NONBLOCK != 0)
-        }
-    }
-
-    /// Sets the nonblocking mode of the underlying file descriptor to either
-    /// on (`true`) or off (`false`).  If `File::new_nb` was previously used
-    /// to construct the `File`, then nonblocking mode has already been turned
-    /// on.
-    ///
-    /// Implementation detail: uses `fcntl` to set `O_NONBLOCK`.
-    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        unsafe {
-            let fd = self.as_raw_fd();
-            // shamelessly copied from libstd/sys/unix/fd.rs
-            let previous = libc::fcntl(fd, libc::F_GETFL);
-            if previous < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            let new = if nonblocking {
-                previous | libc::O_NONBLOCK
-            } else {
-                previous & !libc::O_NONBLOCK
-            };
-            if libc::fcntl(fd, libc::F_SETFL, new) < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(())
-        }
+    pub fn new_nb(mut file: F) -> io::Result<Self> {
+        set_nonblocking(&mut file, true)?;
+        Ok(File::raw_new(file))
     }
 
     /// Converts into a pollable object that supports `tokio_io::AsyncRead`
@@ -207,7 +209,7 @@ impl<F: AsRawFd> mio::Evented for File<F> {
             // this is a workaround for regular files, which are not supported
             // by epoll; they would instead cause EPERM upon registration
             Err(ref e) if e.raw_os_error() == Some(libc::EPERM) => {
-                self.set_nonblocking(false)?;
+                set_nonblocking(&mut self.as_raw_fd(), false)?;
                 // workaround: PollEvented/IoToken always starts off in the
                 // "not ready" state so we have to use a real Evented object
                 // to set its readiness state
@@ -281,18 +283,18 @@ mod tests {
     fn test_nonblocking() -> io::Result<()> {
         let (sock, _) = UnixStream::pair()?;
         {
-            let file = File::new_nb(RefAsRawFd(&sock))?;
-            assert!(file.get_nonblocking()?);
-            file.set_nonblocking(false)?;
-            assert!(!file.get_nonblocking()?);
-            file.set_nonblocking(true)?;
-            assert!(file.get_nonblocking()?);
-            file.set_nonblocking(false)?;
-            assert!(!file.get_nonblocking()?);
+            let mut file = File::new_nb(RefAsRawFd(&sock))?;
+            assert!(get_nonblocking(&file)?);
+            set_nonblocking(&mut file, false)?;
+            assert!(!get_nonblocking(&file)?);
+            set_nonblocking(&mut file, true)?;
+            assert!(get_nonblocking(&file)?);
+            set_nonblocking(&mut file, false)?;
+            assert!(!get_nonblocking(&file)?);
         }
         {
             let file = File::raw_new(RefAsRawFd(&sock));
-            assert!(!file.get_nonblocking()?);
+            assert!(!get_nonblocking(&file)?);
         }
         Ok(())
     }
