@@ -6,10 +6,7 @@
 //! crate has no effect on them.
 //!
 //! See [`File`](struct.File.html) for an example of how a file can be made
-//! suitable for asynchronous I/O.  See [`DelimCodec`](struct.DelimCodec.html)
-//! for a more comprehensive example of reading the lines of a file using
-//! `futures::Stream`.
-extern crate bytes;
+//! suitable for asynchronous I/O.
 extern crate libc;
 extern crate mio;
 extern crate tokio;
@@ -46,68 +43,6 @@ pub fn raw_stdout() -> io::Result<fs::File> {
 /// Unlike `std::io::Stderr`, this file is not buffered.
 pub fn raw_stderr() -> io::Result<fs::File> {
     unsafe { dupe_file_from_fd(libc::STDERR_FILENO) }
-}
-
-/// Wrapper for `std::io::Std*Lock` that can be used with `File`.
-///
-/// For an example, see [`File`](struct.File.html).
-///
-/// ```ignore
-/// impl AsRawFd + Read for File<StdinLock>
-/// impl AsRawFd + Write for File<StdoutLock>
-/// impl AsRawFd + Write for File<StderrLock>
-/// ```
-#[deprecated(since="0.5.0", note="Use raw_std{in,out,err}()")]
-pub struct StdFile<F>(pub F);
-
-#[allow(deprecated)]
-impl<'a> AsRawFd for StdFile<io::StdinLock<'a>> {
-    fn as_raw_fd(&self) -> RawFd {
-        libc::STDIN_FILENO
-    }
-}
-
-#[allow(deprecated)]
-impl<'a> AsRawFd for StdFile<io::StdoutLock<'a>> {
-    fn as_raw_fd(&self) -> RawFd {
-        libc::STDOUT_FILENO
-    }
-}
-
-#[allow(deprecated)]
-impl<'a> AsRawFd for StdFile<io::StderrLock<'a>> {
-    fn as_raw_fd(&self) -> RawFd {
-        libc::STDERR_FILENO
-    }
-}
-
-#[allow(deprecated)]
-impl<'a> io::Read for StdFile<io::StdinLock<'a>> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
-    }
-}
-
-#[allow(deprecated)]
-impl<'a> io::Write for StdFile<io::StdoutLock<'a>> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
-    }
-}
-
-#[allow(deprecated)]
-impl<'a> io::Write for StdFile<io::StderrLock<'a>> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
-    }
 }
 
 /// Used to wrap file-like objects so they can be used with
@@ -327,22 +262,6 @@ impl<F: io::Write> io::Write for File<F> {
 impl<F: io::Seek> io::Seek for File<F> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         self.file.seek(pos)
-    }
-}
-
-/// Represents a newline that can be used with `DelimCodec`.
-///
-/// For an example, see [`File`](struct.File.html).
-///
-/// ```ignore
-/// impl Into<u8> for Newline;
-/// ```
-#[derive(Debug, Clone, Copy)]
-pub struct Newline;
-
-impl From<Newline> for u8 {
-    fn from(_: Newline) -> Self {
-        b'\n'
     }
 }
 

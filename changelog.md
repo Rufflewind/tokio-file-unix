@@ -2,6 +2,8 @@
 
 ## 0.6.0
 
+  - `StdFile` has been removed in favor of `raw_stdin`, `raw_stdout`, and
+    `raw_stderr`.
   - `DelimCodec` has been removed in favor of `tokio_util::codec::FramedRead`.
   - tokio dependency has been migrated to 0.2.6 and Rust edition to 2018.
 
