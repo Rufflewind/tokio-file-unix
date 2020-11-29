@@ -67,9 +67,9 @@ pub fn raw_stderr() -> io::Result<fs::File> {
 /// extern crate tokio;
 /// extern crate tokio_file_unix;
 ///
+/// use tokio::stream::StreamExt;
 /// use tokio_util::codec::FramedRead;
 /// use tokio_util::codec::LinesCodec;
-/// use crate::tokio::stream::StreamExt;
 ///
 /// #[tokio::main]
 /// async fn main() {

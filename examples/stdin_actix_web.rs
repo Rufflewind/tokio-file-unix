@@ -2,13 +2,12 @@ extern crate futures;
 extern crate tokio;
 extern crate tokio_file_unix;
 
-use crate::tokio::stream::StreamExt;
 use actix_web::client::Client;
 use actix_web::{get, web, App, HttpServer, Responder};
 use futures::future::FutureExt;
 use futures::{pin_mut, select};
-use tokio_util::codec::FramedRead;
-use tokio_util::codec::LinesCodec;
+use tokio::stream::StreamExt;
+use tokio_util::codec::{FramedRead, LinesCodec};
 
 #[get("/{something}")]
 async fn index(info: web::Path<String>) -> impl Responder {

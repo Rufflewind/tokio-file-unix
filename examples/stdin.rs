@@ -1,9 +1,8 @@
 extern crate tokio;
 extern crate tokio_file_unix;
 
-use crate::tokio::stream::StreamExt;
-use tokio_util::codec::FramedRead;
-use tokio_util::codec::LinesCodec;
+use tokio::stream::StreamExt;
+use tokio_util::codec::{FramedRead, LinesCodec};
 
 #[tokio::main]
 async fn main() {
