@@ -18,8 +18,5 @@ mio = "0.6.6"
 tokio = { version = "0.2.6", features = ["io-driver"] }
 
 [dev-dependencies]
-futures = "0.3.8"
 tokio = { version = "0.2.6", features = ["io-util", "macros"] }
 tokio-util = { version = "0.3.0", features = ["codec"] }
-actix-rt = "1.1.1"
-actix-web = "3.3.0"
