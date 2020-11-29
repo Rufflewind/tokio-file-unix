@@ -12,8 +12,8 @@ extern crate mio;
 extern crate tokio;
 
 use std::cell::RefCell;
-use std::{fs, io};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::{fs, io};
 use tokio::io::PollEvented;
 
 unsafe fn dupe_file_from_fd(old_fd: RawFd) -> io::Result<fs::File> {
@@ -201,11 +201,14 @@ impl<F: AsRawFd> AsRawFd for File<F> {
 }
 
 impl<F: AsRawFd> mio::Evented for File<F> {
-    fn register(&self, poll: &mio::Poll, token: mio::Token,
-                interest: mio::Ready, opts: mio::PollOpt)
-                -> io::Result<()> {
-        match mio::unix::EventedFd(&self.as_raw_fd())
-                  .register(poll, token, interest, opts) {
+    fn register(
+        &self,
+        poll: &mio::Poll,
+        token: mio::Token,
+        interest: mio::Ready,
+        opts: mio::PollOpt,
+    ) -> io::Result<()> {
+        match mio::unix::EventedFd(&self.as_raw_fd()).register(poll, token, interest, opts) {
             // this is a workaround for regular files, which are not supported
             // by epoll; they would instead cause EPERM upon registration
             Err(ref e) if e.raw_os_error() == Some(libc::EPERM) => {
@@ -215,8 +218,7 @@ impl<F: AsRawFd> mio::Evented for File<F> {
                 // to set its readiness state
                 let (r, s) = mio::Registration::new2();
                 r.register(poll, token, interest, opts)?;
-                s.set_readiness(mio::Ready::readable() |
-                                     mio::Ready::writable())?;
+                s.set_readiness(mio::Ready::readable() | mio::Ready::writable())?;
                 *self.evented.borrow_mut() = Some(r);
                 Ok(())
             }
@@ -224,20 +226,22 @@ impl<F: AsRawFd> mio::Evented for File<F> {
         }
     }
 
-    fn reregister(&self, poll: &mio::Poll, token: mio::Token,
-                  interest: mio::Ready, opts: mio::PollOpt)
-                  -> io::Result<()> {
+    fn reregister(
+        &self,
+        poll: &mio::Poll,
+        token: mio::Token,
+        interest: mio::Ready,
+        opts: mio::PollOpt,
+    ) -> io::Result<()> {
         match *self.evented.borrow() {
-            None => mio::unix::EventedFd(&self.as_raw_fd())
-                             .reregister(poll, token, interest, opts),
+            None => mio::unix::EventedFd(&self.as_raw_fd()).reregister(poll, token, interest, opts),
             Some(ref r) => r.reregister(poll, token, interest, opts),
         }
     }
 
     fn deregister(&self, poll: &mio::Poll) -> io::Result<()> {
         match *self.evented.borrow() {
-            None => mio::unix::EventedFd(&self.as_raw_fd())
-                             .deregister(poll),
+            None => mio::unix::EventedFd(&self.as_raw_fd()).deregister(poll),
             Some(ref r) => mio::Evented::deregister(r, poll),
         }
     }
@@ -273,7 +277,9 @@ mod tests {
 
     pub struct RefAsRawFd<T>(pub T);
     impl<'a, T: AsRawFd> AsRawFd for RefAsRawFd<&'a T> {
-        fn as_raw_fd(&self) -> RawFd { self.0.as_raw_fd() }
+        fn as_raw_fd(&self) -> RawFd {
+            self.0.as_raw_fd()
+        }
     }
 
     #[test]

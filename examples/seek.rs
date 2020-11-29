@@ -1,9 +1,9 @@
 extern crate tokio;
 extern crate tokio_file_unix;
 
-use tokio::io::AsyncWriteExt;
 use std::fs::File as StdFile;
 use std::io::{Seek, SeekFrom};
+use tokio::io::AsyncWriteExt;
 
 #[tokio::main]
 async fn main() {

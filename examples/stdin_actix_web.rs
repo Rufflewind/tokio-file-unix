@@ -2,13 +2,13 @@ extern crate futures;
 extern crate tokio;
 extern crate tokio_file_unix;
 
-use futures::{pin_mut, select};
+use crate::tokio::stream::StreamExt;
+use actix_web::client::Client;
+use actix_web::{get, web, App, HttpServer, Responder};
 use futures::future::FutureExt;
+use futures::{pin_mut, select};
 use tokio_util::codec::FramedRead;
 use tokio_util::codec::LinesCodec;
-use crate::tokio::stream::StreamExt;
-use actix_web::{get, web, App, HttpServer, Responder};
-use actix_web::client::{Client};
 
 #[get("/{something}")]
 async fn index(info: web::Path<String>) -> impl Responder {
@@ -30,9 +30,13 @@ async fn main() -> std::io::Result<()> {
         while let Some(got) = framed.next().await {
             println!("Sending this: {:?}", got);
 
-            let mut response = match client.get(format!("http://127.0.0.1:8080/{}", got.unwrap())).send().await {
+            let mut response = match client
+                .get(format!("http://127.0.0.1:8080/{}", got.unwrap()))
+                .send()
+                .await
+            {
                 Err(e) => panic!("{:?}", e),
-                Ok(t) => t
+                Ok(t) => t,
             };
 
             let body = response.body().await.unwrap();
@@ -40,7 +44,8 @@ async fn main() -> std::io::Result<()> {
             println!("Got bytes: {:?}", String::from_utf8(body.to_vec()).unwrap());
         }
         Ok(())
-    }.fuse();
+    }
+    .fuse();
 
     let server_fut = HttpServer::new(|| App::new().service(index))
         .bind("127.0.0.1:8080")?
