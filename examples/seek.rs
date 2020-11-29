@@ -9,9 +9,9 @@ async fn main() -> io::Result<()> {
     let mut file = tokio_file_unix::File::new_nb(file)?;
 
     file.write_all(b"aaaaAAAAaaaaAAAA\n").await?;
-    file.get_mut().seek(SeekFrom::Start(8))?;
+    file.as_mut().seek(SeekFrom::Start(8))?;
     file.write_all(&[b'b'; 8]).await?;
-    file.get_mut().seek(SeekFrom::Start(2))?;
+    file.as_mut().seek(SeekFrom::Start(2))?;
     file.write_all(&[b'c'; 4]).await?;
 
     Ok(())

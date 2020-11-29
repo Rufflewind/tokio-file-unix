@@ -8,10 +8,12 @@
 //! See [`File`](struct.File.html) for an example of how a file can be made
 //! suitable for asynchronous I/O.
 
-use std::cell::RefCell;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::{fs, io};
-use tokio::io::PollEvented;
+use tokio::io::unix::AsyncFd;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 unsafe fn dupe_file_from_fd(old_fd: RawFd) -> io::Result<fs::File> {
     let fd = libc::fcntl(old_fd, libc::F_DUPFD_CLOEXEC, 0);
@@ -95,11 +97,14 @@ pub fn set_nonblocking<F: AsRawFd>(file: &mut F, nonblocking: bool) -> io::Resul
 /// nonblocking mode.
 ///
 /// The most common instantiation of this type is `File<std::fs::File>`, which
-/// indirectly provides the following trait implementation:
+/// provides the following trait implementation:
 ///
 /// ```ignore
-/// impl AsyncRead + AsyncWrite for PollEvented<File<std::fs::File>>;
+/// impl AsyncRead + AsyncWrite for File<std::fs::File>;
 /// ```
+///
+/// While `F` is wrapped by `File`, the underlying file descriptor must not be
+/// invalidated.
 ///
 /// ## Example: read standard input line by line
 ///
@@ -148,14 +153,14 @@ pub fn set_nonblocking<F: AsRawFd>(file: &mut F, nonblocking: bool) -> io::Resul
 #[derive(Debug)]
 pub struct File<F> {
     file: F,
-    evented: RefCell<Option<mio::Registration>>,
+    fd: Option<AsyncFd<RawFd>>,
 }
 
 impl<F: AsRawFd> File<F> {
     /// Wraps a file-like object into a pollable object that supports
     /// `tokio::io::AsyncRead` and `tokio::io::AsyncWrite`, and also *enables
     /// nonblocking mode* on the underlying file descriptor.
-    pub fn new_nb(mut file: F) -> io::Result<PollEvented<Self>> {
+    pub fn new_nb(mut file: F) -> io::Result<Self> {
         set_nonblocking(&mut file, true)?;
         File::raw_new(file)
     }
@@ -164,11 +169,22 @@ impl<F: AsRawFd> File<F> {
     /// underlying file descriptor.  This constructor should only be used if
     /// you are certain that the underlying file descriptor is already in
     /// nonblocking mode.
-    pub fn raw_new(file: F) -> io::Result<PollEvented<Self>> {
-        PollEvented::new(File {
-            file: file,
-            evented: Default::default(),
-        })
+    pub fn raw_new(mut file: F) -> io::Result<Self> {
+        // The raw file descriptor is being snapshotted here.  This is
+        // necessary because (1) Async::new drops the argument upon failure
+        // and (2) AsyncFdReadyGuard::with_io blocks us from using
+        // AsyncFd::get_mut.
+        let fd = match AsyncFd::new(file.as_raw_fd()) {
+            // this is a workaround for regular files, which are not supported
+            // by epoll; they would instead cause EPERM upon registration
+            Err(ref e) if e.raw_os_error() == Some(libc::EPERM) => {
+                set_nonblocking(&mut file, false)?;
+                None
+            }
+            Ok(fd) => Some(fd),
+            Err(e) => return Err(e),
+        };
+        Ok(Self { file, fd })
     }
 }
 
@@ -178,72 +194,63 @@ impl<F: AsRawFd> AsRawFd for File<F> {
     }
 }
 
-impl<F: AsRawFd> mio::Evented for File<F> {
-    fn register(
-        &self,
-        poll: &mio::Poll,
-        token: mio::Token,
-        interest: mio::Ready,
-        opts: mio::PollOpt,
-    ) -> io::Result<()> {
-        match mio::unix::EventedFd(&self.as_raw_fd()).register(poll, token, interest, opts) {
-            // this is a workaround for regular files, which are not supported
-            // by epoll; they would instead cause EPERM upon registration
-            Err(ref e) if e.raw_os_error() == Some(libc::EPERM) => {
-                set_nonblocking(&mut self.as_raw_fd(), false)?;
-                // workaround: PollEvented/IoToken always starts off in the
-                // "not ready" state so we have to use a real Evented object
-                // to set its readiness state
-                let (r, s) = mio::Registration::new2();
-                r.register(poll, token, interest, opts)?;
-                s.set_readiness(mio::Ready::readable() | mio::Ready::writable())?;
-                *self.evented.borrow_mut() = Some(r);
+impl<F> AsRef<F> for File<F> {
+    fn as_ref(&self) -> &F {
+        &self.file
+    }
+}
+
+impl<F> AsMut<F> for File<F> {
+    fn as_mut(&mut self) -> &mut F {
+        &mut self.file
+    }
+}
+
+impl<F: io::Read + Unpin> AsyncRead for File<F> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &mut tokio::io::ReadBuf,
+    ) -> Poll<io::Result<()>> {
+        let Self {
+            ref mut file,
+            ref mut fd,
+        } = Pin::into_inner(self);
+        match fd {
+            Some(fd) => fd.poll_read_ready(cx)?.map(|mut guard| {
+                let n = guard.with_io(|| file.read(buf.initialize_unfilled()))?;
+                buf.advance(n);
                 Ok(())
+            }),
+            None => {
+                let n = file.read(buf.initialize_unfilled())?;
+                buf.advance(n);
+                Poll::Ready(Ok(()))
             }
-            e => e,
-        }
-    }
-
-    fn reregister(
-        &self,
-        poll: &mio::Poll,
-        token: mio::Token,
-        interest: mio::Ready,
-        opts: mio::PollOpt,
-    ) -> io::Result<()> {
-        match *self.evented.borrow() {
-            None => mio::unix::EventedFd(&self.as_raw_fd()).reregister(poll, token, interest, opts),
-            Some(ref r) => r.reregister(poll, token, interest, opts),
-        }
-    }
-
-    fn deregister(&self, poll: &mio::Poll) -> io::Result<()> {
-        match *self.evented.borrow() {
-            None => mio::unix::EventedFd(&self.as_raw_fd()).deregister(poll),
-            Some(ref r) => mio::Evented::deregister(r, poll),
         }
     }
 }
 
-impl<F: io::Read> io::Read for File<F> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.file.read(buf)
+impl<F: io::Write + Unpin> AsyncWrite for File<F> {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+        let Self {
+            ref mut file,
+            ref mut fd,
+        } = Pin::into_inner(self);
+        match fd {
+            Some(ref mut fd) => fd
+                .poll_write_ready(cx)?
+                .map(|mut guard| Ok(guard.with_io(|| file.write(buf))?)),
+            None => Poll::Ready(file.write(buf)),
+        }
     }
-}
 
-impl<F: io::Write> io::Write for File<F> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.file.write(buf)
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context) -> Poll<io::Result<()>> {
+        Poll::Ready(Pin::into_inner(self).file.flush())
     }
 
-    fn flush(&mut self) -> io::Result<()> {
-        self.file.flush()
-    }
-}
-
-impl<F: io::Seek> io::Seek for File<F> {
-    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        self.file.seek(pos)
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.poll_flush(cx)
     }
 }
 

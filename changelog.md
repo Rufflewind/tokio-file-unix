@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+
+  - tokio dependency has been migrated to 0.3.4, which no longer exposes
+    `PollEvented`.
+  - `PollEvented<File>` has been replaced by just `File`.
+  - `PollEvented<File>::get_mut` has been replaced by `File::as_mut`.
+
 ## 0.6.0
 
   - `File::to_io` has been removed in favor of having `File::new_nb` and
