@@ -66,12 +66,12 @@ pub fn raw_stderr() -> io::Result<fs::File> {
 /// use tokio_util::codec::LinesCodec;
 ///
 /// #[tokio::main]
-/// async fn main() {
+/// async fn main() -> std::io::Result<()> {
 ///     // convert stdin into a nonblocking file;
 ///     // this is the only part that makes use of tokio_file_unix
-///     let file = tokio_file_unix::raw_stdin().unwrap();
-///     let file = tokio_file_unix::File::new_nb(file).unwrap();
-///     let file = file.into_io().unwrap();
+///     let file = tokio_file_unix::raw_stdin()?;
+///     let file = tokio_file_unix::File::new_nb(file)?;
+///     let file = file.into_io()?;
 ///
 ///     let mut framed = FramedRead::new(file, LinesCodec::new());
 ///
@@ -80,6 +80,7 @@ pub fn raw_stderr() -> io::Result<fs::File> {
 ///     }
 ///
 ///     println!("Received None, lol");
+///     Ok(())
 /// }
 /// ```
 ///
@@ -277,21 +278,22 @@ mod tests {
     }
 
     #[test]
-    fn test_nonblocking() {
-        let (sock, _) = UnixStream::pair().unwrap();
+    fn test_nonblocking() -> io::Result<()> {
+        let (sock, _) = UnixStream::pair()?;
         {
-            let file = File::new_nb(RefAsRawFd(&sock)).unwrap();
-            assert!(file.get_nonblocking().unwrap());
-            file.set_nonblocking(false).unwrap();
-            assert!(!file.get_nonblocking().unwrap());
-            file.set_nonblocking(true).unwrap();
-            assert!(file.get_nonblocking().unwrap());
-            file.set_nonblocking(false).unwrap();
-            assert!(!file.get_nonblocking().unwrap());
+            let file = File::new_nb(RefAsRawFd(&sock))?;
+            assert!(file.get_nonblocking()?);
+            file.set_nonblocking(false)?;
+            assert!(!file.get_nonblocking()?);
+            file.set_nonblocking(true)?;
+            assert!(file.get_nonblocking()?);
+            file.set_nonblocking(false)?;
+            assert!(!file.get_nonblocking()?);
         }
         {
             let file = File::raw_new(RefAsRawFd(&sock));
-            assert!(!file.get_nonblocking().unwrap());
+            assert!(!file.get_nonblocking()?);
         }
+        Ok(())
     }
 }
