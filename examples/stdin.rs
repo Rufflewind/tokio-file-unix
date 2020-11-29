@@ -8,7 +8,6 @@ async fn main() -> io::Result<()> {
     // this is the only part that makes use of tokio_file_unix
     let file = tokio_file_unix::raw_stdin()?;
     let file = tokio_file_unix::File::new_nb(file)?;
-    let file = file.into_io()?;
 
     let mut framed = FramedRead::new(file, LinesCodec::new());
 

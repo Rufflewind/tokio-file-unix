@@ -2,6 +2,8 @@
 
 ## 0.6.0
 
+  - `File::to_io` has been removed in favor of having `File::new_nb` and
+    `File::raw_new` return a `PollEvented` directly.
   - `File::get_nonblocking` and `File::set_nonblocking` have been migrated to
     module-level.
   - `StdFile` has been removed in favor of `raw_stdin`, `raw_stdout`, and

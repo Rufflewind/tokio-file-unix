@@ -21,7 +21,6 @@ async fn main() -> io::Result<()> {
     let stdin_fut = async {
         let file = tokio_file_unix::raw_stdin()?;
         let file = tokio_file_unix::File::new_nb(file)?;
-        let file = file.into_io()?;
 
         let client = Client::default();
 

@@ -84,8 +84,7 @@ pub fn set_nonblocking<F: AsRawFd>(file: &mut F, nonblocking: bool) -> io::Resul
     }
 }
 
-/// Used to wrap file-like objects so they can be used with
-/// `tokio_core::reactor::PollEvented`.
+/// Wraps file-like objects for asynchronous I/O.
 ///
 /// Normally, you should use `File::new_nb` rather than `File::raw_new` unless
 /// the underlying file descriptor has already been set to nonblocking mode.
@@ -95,9 +94,11 @@ pub fn set_nonblocking<F: AsRawFd>(file: &mut F, nonblocking: bool) -> io::Resul
 /// Wrapping regular files has no effect because they do not support
 /// nonblocking mode.
 ///
+/// The most common instantiation of this type is `File<std::fs::File>`, which
+/// indirectly provides the following trait implementation:
+///
 /// ```ignore
-/// impl Evented for File<std::fs::File>;
-/// impl Evented for File<impl AsRawFd>;
+/// impl AsyncRead + AsyncWrite for PollEvented<File<std::fs::File>>;
 /// ```
 ///
 /// ## Example: read standard input line by line
@@ -113,7 +114,6 @@ pub fn set_nonblocking<F: AsRawFd>(file: &mut F, nonblocking: bool) -> io::Resul
 ///     // this is the only part that makes use of tokio_file_unix
 ///     let file = tokio_file_unix::raw_stdin()?;
 ///     let file = tokio_file_unix::File::new_nb(file)?;
-///     let file = file.into_io()?;
 ///
 ///     let mut framed = FramedRead::new(file, LinesCodec::new());
 ///
@@ -152,42 +152,23 @@ pub struct File<F> {
 }
 
 impl<F: AsRawFd> File<F> {
-    /// Wraps a file-like object so it can be used with
-    /// `tokio_core::reactor::PollEvented`, and also *enables nonblocking
-    /// mode* on the underlying file descriptor.
-    ///
-    /// ```ignore
-    /// fn new_nb(std::fs::File) -> Result<impl Evented + Read + Write>;
-    /// fn new_nb(impl AsRawFd) -> Result<impl Evented>;
-    /// ```
-    pub fn new_nb(mut file: F) -> io::Result<Self> {
+    /// Wraps a file-like object into a pollable object that supports
+    /// `tokio::io::AsyncRead` and `tokio::io::AsyncWrite`, and also *enables
+    /// nonblocking mode* on the underlying file descriptor.
+    pub fn new_nb(mut file: F) -> io::Result<PollEvented<Self>> {
         set_nonblocking(&mut file, true)?;
-        Ok(File::raw_new(file))
+        File::raw_new(file)
     }
 
-    /// Converts into a pollable object that supports `tokio_io::AsyncRead`
-    /// and `tokio_io::AsyncWrite`, making it suitable for `tokio_io::io::*`.
-    ///
-    /// ```ignore
-    /// fn into_io(File<std::fs::File>, &Handle) -> Result<impl AsyncRead + AsyncWrite>;
-    /// fn into_io(File<impl AsRawFd + Read>, &Handle) -> Result<impl AsyncRead>;
-    /// fn into_io(File<impl AsRawFd + Write>, &Handle) -> Result<impl AsyncWrite>;
-    /// ```
-    pub fn into_io(self) -> io::Result<PollEvented<Self>> {
-        PollEvented::new(self)
-    }
-}
-
-impl<F> File<F> {
     /// Raw constructor that **does not enable nonblocking mode** on the
     /// underlying file descriptor.  This constructor should only be used if
     /// you are certain that the underlying file descriptor is already in
     /// nonblocking mode.
-    pub fn raw_new(file: F) -> Self {
-        File {
+    pub fn raw_new(file: F) -> io::Result<PollEvented<Self>> {
+        PollEvented::new(File {
             file: file,
             evented: Default::default(),
-        }
+        })
     }
 }
 
@@ -269,33 +250,18 @@ impl<F: io::Seek> io::Seek for File<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::io::{AsRawFd, RawFd};
     use std::os::unix::net::UnixStream;
-
-    pub struct RefAsRawFd<T>(pub T);
-    impl<'a, T: AsRawFd> AsRawFd for RefAsRawFd<&'a T> {
-        fn as_raw_fd(&self) -> RawFd {
-            self.0.as_raw_fd()
-        }
-    }
 
     #[test]
     fn test_nonblocking() -> io::Result<()> {
         let (sock, _) = UnixStream::pair()?;
-        {
-            let mut file = File::new_nb(RefAsRawFd(&sock))?;
-            assert!(get_nonblocking(&file)?);
-            set_nonblocking(&mut file, false)?;
-            assert!(!get_nonblocking(&file)?);
-            set_nonblocking(&mut file, true)?;
-            assert!(get_nonblocking(&file)?);
-            set_nonblocking(&mut file, false)?;
-            assert!(!get_nonblocking(&file)?);
-        }
-        {
-            let file = File::raw_new(RefAsRawFd(&sock));
-            assert!(!get_nonblocking(&file)?);
-        }
+        let mut fd = sock.as_raw_fd();
+        set_nonblocking(&mut fd, false)?;
+        assert!(!get_nonblocking(&fd)?);
+        set_nonblocking(&mut fd, true)?;
+        assert!(get_nonblocking(&fd)?);
+        set_nonblocking(&mut fd, false)?;
+        assert!(!get_nonblocking(&fd)?);
         Ok(())
     }
 }
