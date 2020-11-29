@@ -1,6 +1,6 @@
 [package]
 name = "tokio-file-unix"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["Phil Ruffwind <rf@rufflewind.com>"]
 description = "Asynchronous support for epollable files via Tokio on Unix-like platforms"
 documentation = "https://docs.rs/tokio-file-unix"
@@ -15,12 +15,11 @@ edition = "2018"
 [dependencies]
 libc = "0.2.21"
 mio = "0.6.6"
-tokio = { version = "0.2.6", features = ["io-util", "io-driver", "stream"] }
-tokio-util = { version = "0.2.0", features = ["codec"] }
+tokio = { version = "0.2.6", features = ["io-driver"] }
 
 [dev-dependencies]
 futures = "0.3.8"
-tokio = { version = "0.2", features = ["full", "io-util"] }
-actix = "0.9.0"
-actix-rt = "1.0.0"
-actix-web = "2.0.0-rc"
+tokio = { version = "0.2.6", features = ["io-util", "macros"] }
+tokio-util = { version = "0.3.0", features = ["codec"] }
+actix-rt = "1.1.1"
+actix-web = "3.3.0"
