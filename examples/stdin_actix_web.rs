@@ -1,7 +1,3 @@
-extern crate futures;
-extern crate tokio;
-extern crate tokio_file_unix;
-
 use actix_web::client::Client;
 use actix_web::{get, web, App, HttpServer, Responder};
 use futures::future::FutureExt;

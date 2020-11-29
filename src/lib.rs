@@ -7,9 +7,6 @@
 //!
 //! See [`File`](struct.File.html) for an example of how a file can be made
 //! suitable for asynchronous I/O.
-extern crate libc;
-extern crate mio;
-extern crate tokio;
 
 use std::cell::RefCell;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -64,9 +61,6 @@ pub fn raw_stderr() -> io::Result<fs::File> {
 /// ## Example: read standard input line by line
 ///
 /// ```
-/// extern crate tokio;
-/// extern crate tokio_file_unix;
-///
 /// use tokio::stream::StreamExt;
 /// use tokio_util::codec::FramedRead;
 /// use tokio_util::codec::LinesCodec;
