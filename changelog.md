@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+  - `DelimCodec` has been removed in favor of `tokio_util::codec::FramedRead`.
+  - tokio dependency has been migrated to 0.2.6 and Rust edition to 2018.
+
 ## 0.5.1
 
   - Add `impl<F: Seek> Seek for File<F>`.
