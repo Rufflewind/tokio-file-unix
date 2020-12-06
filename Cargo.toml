@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["asynchronous", "file", "pipe", "stdio", "tokio"]
 categories = ["asynchronous"]
 license = "MIT/Apache-2.0"
-exclude = [".gitignore", "tests/seek.txt"]
+exclude = [".gitignore", ".travis.yml", "tests/seek.txt"]
 edition = "2018"
 
 [dependencies]
