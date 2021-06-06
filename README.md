@@ -2,7 +2,7 @@
 
 [![Documentation](https://docs.rs/tokio-file-unix/badge.svg)](https://docs.rs/tokio-file-unix)
 [![Crates.io](https://img.shields.io/crates/v/tokio-file-unix.svg)](https://crates.io/crates/tokio-file-unix)
-[![Travis CI Build Status](https://travis-ci.org/Rufflewind/tokio-file-unix.svg?branch=master)](https://travis-ci.org/Rufflewind/tokio-file-unix)
+[![Build Status](https://github.com/Rufflewind/tokio-file-unix/actions/workflows/build.yml/badge.svg)](https://github.com/Rufflewind/tokio-file-unix/actions/workflows/build.yml)
 
 Asynchronous support for file-like objects via [Tokio](https://tokio.rs).  **Only supports Unix-like platforms.**
 
